@@ -1,0 +1,25 @@
+[package]
+name = "reading-tracker"
+version = "0.1.0"
+description = "A Tauri App for tracking reading sessions"
+authors = ["janos0207"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = ["devtools"] }
+tauri-plugin-sql = { version = "2.0", features = ["sqlite"] }
+tauri-plugin-store = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+anyhow = "1.0"
+thiserror = "1.0"
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
