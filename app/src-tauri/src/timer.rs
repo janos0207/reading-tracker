@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -7,6 +8,7 @@ pub struct TimerSession {
     pub session_id: String,
     pub book_id: String,
     pub start_at: String,
+    pub start_timestamp: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,13 +20,19 @@ pub struct StoppedSession {
 }
 
 pub struct TimerState {
-    pub current_session: Mutex<Option<TimerSession>>,
+    pub current_session: Arc<Mutex<Option<TimerSession>>>,
 }
 
 impl TimerState {
     pub fn new() -> Self {
         TimerState {
-            current_session: Mutex::new(None),
+            current_session: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn clone_state(&self) -> Self {
+        TimerState {
+            current_session: Arc::clone(&self.current_session),
         }
     }
 
@@ -36,11 +44,16 @@ impl TimerState {
         }
 
         let session_id = Uuid::new_v4().to_string();
+        let start_timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         
         *session = Some(TimerSession {
             session_id: session_id.clone(),
             book_id,
             start_at: start_at_iso,
+            start_timestamp,
         });
 
         Ok(session_id)
@@ -60,6 +73,18 @@ impl TimerState {
             }
             None => Err("No timer session is currently running".to_string()),
         }
+    }
+
+    pub fn get_elapsed_seconds(&self) -> Option<u64> {
+        let session = self.current_session.lock().unwrap();
+        
+        session.as_ref().map(|s| {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            now - s.start_timestamp
+        })
     }
 }
 
@@ -141,6 +166,7 @@ mod tests {
             session_id: "test-id".to_string(),
             book_id: "book-id".to_string(),
             start_at: "2025-11-08T10:00:00Z".to_string(),
+            start_timestamp: 1699437600,
         };
 
         let json = serde_json::to_string(&session).unwrap();
@@ -149,6 +175,7 @@ mod tests {
         assert_eq!(deserialized.session_id, session.session_id);
         assert_eq!(deserialized.book_id, session.book_id);
         assert_eq!(deserialized.start_at, session.start_at);
+        assert_eq!(deserialized.start_timestamp, session.start_timestamp);
     }
 
     #[test]

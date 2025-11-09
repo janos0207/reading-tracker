@@ -24,11 +24,12 @@ dist-ssr
 *.sw?
 
 # Tauri
-src-tauri/target
-src-tauri/gen
-src-tauri/WixTools
+app/src-tauri/target
+app/src-tauri/gen
+app/src-tauri/WixTools
 
 # SQLite databases
 *.db
 *.db-shm
 *.db-wal
+

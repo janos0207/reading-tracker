@@ -6,6 +6,7 @@ mod timer;
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use tauri::{Emitter, Manager};
 use timer::{StoppedSession, TimerState};
 use uuid::Uuid;
 
@@ -25,8 +26,8 @@ struct SessionPayload {
     end_at: Option<String>,
 }
 
-// Note: The tauri-plugin-sql commands are exposed via JavaScript API
-// We implement the business logic commands here, SQL is called from frontend
+// Note: The SQL operations will be done via frontend using tauri-plugin-sql
+// These commands are just stubs that generate IDs - actual DB ops happen in JS
 
 #[tauri::command]
 fn create_book(
@@ -67,8 +68,6 @@ fn timer_stop(state: State<TimerState>, end_at_iso: String) -> Result<StoppedSes
 }
 
 fn main() {
-    let timer_state = TimerState::new();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
@@ -77,9 +76,27 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 db::init_db(&app_handle).await.expect("Failed to initialize database");
             });
+
+            // Initialize timer state
+            let timer_state = TimerState::new();
+            let timer_state_for_tick = timer_state.clone_state();
+            app.manage(timer_state);
+
+            // Timer tick background task
+            let app_handle_clone = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    
+                    if let Some(elapsed) = timer_state_for_tick.get_elapsed_seconds() {
+                        let _ = app_handle_clone.emit("timer://tick", elapsed);
+                        println!("Timer tick emitted: {} seconds", elapsed);
+                    }
+                }
+            });
+
             Ok(())
         })
-        .manage(timer_state)
         .invoke_handler(tauri::generate_handler![
             create_book,
             list_books,

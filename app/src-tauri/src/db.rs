@@ -35,12 +35,19 @@ pub async fn init_db(app: &AppHandle) -> Result<()> {
         },
     ];
 
-    // Register the plugin with migrations
-    app.plugin(
-        tauri_plugin_sql::Builder::default()
-            .add_migrations("sqlite:reading_tracker.db", migrations)
-            .build(),
-    )?;
+    // Determine which database to use based on debug/release build
+    let db_name = if cfg!(debug_assertions) {
+        "sqlite:reading_tracker_dev.db"
+    } else {
+        "sqlite:reading_tracker.db"
+    };
+
+    // Register the plugin with migrations for the appropriate database
+    let mut builder = tauri_plugin_sql::Builder::default();
+    builder = builder.add_migrations(db_name, migrations);
+    app.plugin(builder.build())?;
+
+    println!("Database initialized: {}", db_name);
 
     Ok(())
 }
