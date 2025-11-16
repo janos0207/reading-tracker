@@ -67,6 +67,15 @@ fn timer_stop(state: State<TimerState>, end_at_iso: String) -> Result<StoppedSes
     state.stop(end_at_iso)
 }
 
+#[tauri::command]
+fn get_database_name() -> String {
+    if cfg!(debug_assertions) {
+        "sqlite:reading_tracker_dev.db".to_string()
+    } else {
+        "sqlite:reading_tracker.db".to_string()
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -90,7 +99,6 @@ fn main() {
                     
                     if let Some(elapsed) = timer_state_for_tick.get_elapsed_seconds() {
                         let _ = app_handle_clone.emit("timer://tick", elapsed);
-                        println!("Timer tick emitted: {} seconds", elapsed);
                     }
                 }
             });
@@ -102,7 +110,8 @@ fn main() {
             list_books,
             upsert_session,
             timer_start,
-            timer_stop
+            timer_stop,
+            get_database_name
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

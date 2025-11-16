@@ -6,11 +6,8 @@ let db: Database | null = null;
 
 async function getDb(): Promise<Database> {
   if (!db) {
-    // Use different database for development
-    const dbName =
-      import.meta.env.MODE === "development"
-        ? "sqlite:reading_tracker_dev.db"
-        : "sqlite:reading_tracker.db";
+    // Get database name from backend to ensure consistency
+    const dbName = await invoke<string>("get_database_name");
     db = await Database.load(dbName);
   }
   return db;
