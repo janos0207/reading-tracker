@@ -26,7 +26,13 @@ export function SessionTimer({
 
   // Update isRunning based on activeBookId
   useEffect(() => {
-    setIsRunning(activeBookId === bookId);
+    const running = activeBookId === bookId;
+    setIsRunning(running);
+
+    // When this timer is no longer active, reset elapsed time
+    if (!running) {
+      setElapsedSeconds(0);
+    }
   }, [activeBookId, bookId]);
 
   // Format seconds as mm:ss
