@@ -1,14 +1,39 @@
 import { useEffect, useState, useCallback } from "react";
-import { timerStart, timerStop, upsertSession, onTimerTick } from "../lib/api";
+import { askConfirm } from "../lib/dialog";
+import {
+  timerStart,
+  timerStop,
+  upsertSession,
+  onTimerTick,
+  getActiveSession,
+  stopActiveSession,
+} from "../lib/api";
 
 interface SessionTimerProps {
   bookId: string;
+  activeBookId: string | null;
+  onSessionChange: () => void;
 }
 
-export function SessionTimer({ bookId }: SessionTimerProps) {
+export function SessionTimer({
+  bookId,
+  activeBookId,
+  onSessionChange,
+}: SessionTimerProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  // Update isRunning based on activeBookId
+  useEffect(() => {
+    const running = activeBookId === bookId;
+    setIsRunning(running);
+
+    // When this timer is no longer active, reset elapsed time
+    if (!running) {
+      setElapsedSeconds(0);
+    }
+  }, [activeBookId, bookId]);
 
   // Format seconds as mm:ss
   const formatTime = (seconds: number): string => {
@@ -25,7 +50,9 @@ export function SessionTimer({ bookId }: SessionTimerProps) {
 
     const setupListener = async () => {
       unlisten = await onTimerTick((elapsed) => {
-        setElapsedSeconds(elapsed);
+        if (activeBookId === bookId) {
+          setElapsedSeconds(elapsed);
+        }
       });
     };
 
@@ -36,14 +63,48 @@ export function SessionTimer({ bookId }: SessionTimerProps) {
         unlisten();
       }
     };
-  }, []);
+  }, [activeBookId, bookId]);
 
   const handleStart = useCallback(async () => {
     try {
       setError(null);
-      const now = new Date().toISOString();
 
-      // Start the timer in Rust
+      // Check for existing active session
+      const activeSession = await getActiveSession();
+
+      if (activeSession) {
+        // Ask user to confirm switching
+        const bookIdMatch = activeSession.book_id === bookId;
+        if (bookIdMatch) {
+          // Same book is already active; do not start a new session
+          console.warn("Starting session for already active book");
+          return;
+        } else {
+          const confirmed = await askConfirm(
+            "There is an ongoing reading session. Stop it and start reading this book instead?"
+          );
+
+          if (!confirmed) {
+            // User cancelled
+            return;
+          }
+
+          // Stop the existing session in both backends atomically
+          const now = new Date().toISOString();
+          try {
+            await Promise.all([stopActiveSession(now), timerStop(now)]);
+          } catch (e) {
+            console.error("Failed to stop existing session in all backends", e);
+            setError(
+              "Failed to fully stop the existing reading session. Please try again."
+            );
+            throw e;
+          }
+        }
+      }
+
+      // Start new session
+      const now = new Date().toISOString();
       const newSessionId = await timerStart(bookId, now);
 
       // Create initial session record (start-only)
@@ -53,13 +114,13 @@ export function SessionTimer({ bookId }: SessionTimerProps) {
         start_at: now,
       });
 
-      setIsRunning(true);
       setElapsedSeconds(0);
+      onSessionChange(); // Notify parent to refresh active session
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       console.error("Failed to start timer:", err);
     }
-  }, [bookId]);
+  }, [bookId, onSessionChange]);
 
   const handleStop = useCallback(async () => {
     try {
@@ -69,7 +130,7 @@ export function SessionTimer({ bookId }: SessionTimerProps) {
       // Stop the timer in Rust
       const stoppedSession = await timerStop(now);
 
-      // Update session with end time
+      // Update session with end time in database
       await upsertSession({
         id: stoppedSession.session_id,
         book_id: stoppedSession.book_id,
@@ -77,13 +138,13 @@ export function SessionTimer({ bookId }: SessionTimerProps) {
         end_at: stoppedSession.end_at,
       });
 
-      setIsRunning(false);
       setElapsedSeconds(0);
+      onSessionChange(); // Notify parent to refresh active session
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       console.error("Failed to stop timer:", err);
     }
-  }, []);
+  }, [onSessionChange]);
 
   return (
     <div className="session-timer">

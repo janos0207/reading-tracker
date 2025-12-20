@@ -30,6 +30,15 @@ export interface SessionPayload {
   end_at?: string;
 }
 
+export interface Session {
+  id: string;
+  book_id: string;
+  start_at: string;
+  end_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface StoppedSession {
   session_id: string;
   book_id: string;
@@ -47,23 +56,23 @@ export async function createBook(
   const id = await invoke<string>("create_book", { title, authors });
   const database = await getDb();
   const now = new Date().toISOString();
-  const authorsJson = JSON.stringify(authors);
+  const authorsStr = authors.join(", "); // Comma-separated string
 
   await database.execute(
     "INSERT INTO books (id, title, authors, priority, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [id, title, authorsJson, 0, "active", now, now]
+    [id, title, authorsStr, 0, "active", now, now]
   );
 
   return id;
 }
 
 /**
- * List all books
+ * List all books, ordered by priority (smaller = higher priority)
  */
 export async function listBooks(): Promise<Book[]> {
   const database = await getDb();
   const results = await database.select<Book[]>(
-    "SELECT id, title, authors, priority, status, created_at, updated_at FROM books ORDER BY priority DESC, created_at DESC"
+    "SELECT id, title, authors, priority, status, created_at, updated_at FROM books ORDER BY priority ASC, created_at DESC"
   );
   return results;
 }
@@ -123,4 +132,28 @@ export async function onTimerTick(callback: (elapsedSeconds: number) => void) {
   return await listen<number>("timer://tick", (event) => {
     callback(event.payload);
   });
+}
+
+/**
+ * Get the current active session (if any)
+ * Returns the session with end_at = null, or null if none exists
+ */
+export async function getActiveSession(): Promise<Session | null> {
+  const database = await getDb();
+  const results = await database.select<Session[]>(
+    "SELECT id, book_id, start_at, end_at, created_at, updated_at FROM sessions WHERE end_at IS NULL LIMIT 1"
+  );
+  return results.length > 0 ? results[0] : null;
+}
+
+/**
+ * Stop the active session by setting its end_at timestamp
+ */
+export async function stopActiveSession(endAt: string): Promise<void> {
+  const database = await getDb();
+  const now = new Date().toISOString();
+  await database.execute(
+    "UPDATE sessions SET end_at = ?, updated_at = ? WHERE end_at IS NULL",
+    [endAt, now]
+  );
 }

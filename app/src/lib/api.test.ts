@@ -59,7 +59,7 @@ describe("API Functions", () => {
         expect.arrayContaining([
           mockId,
           "Test Book",
-          JSON.stringify(["Author One", "Author Two"]),
+          "Author One, Author Two", // Comma-separated, not JSON
           0,
           "active",
         ])
@@ -77,7 +77,7 @@ describe("API Functions", () => {
 
       expect(mockDb.execute).toHaveBeenCalledWith(
         expect.stringContaining("INSERT INTO books"),
-        expect.arrayContaining([mockId, "Solo Book", JSON.stringify([])])
+        expect.arrayContaining([mockId, "Solo Book", ""]) // Empty string for no authors
       );
 
       expect(result).toBe(mockId);
@@ -340,6 +340,53 @@ describe("API Functions", () => {
       expect(callback).toHaveBeenNthCalledWith(1, 1);
       expect(callback).toHaveBeenNthCalledWith(2, 2);
       expect(callback).toHaveBeenNthCalledWith(3, 3);
+    });
+  });
+
+  describe("getActiveSession", () => {
+    it("should return the active session if one exists", async () => {
+      const mockActiveSession = {
+        id: "active-session-123",
+        book_id: "book-456",
+        start_at: "2025-11-16T10:00:00Z",
+        end_at: null,
+        created_at: "2025-11-16T10:00:00Z",
+        updated_at: "2025-11-16T10:00:00Z",
+      };
+
+      mockDb.select.mockResolvedValue([mockActiveSession]);
+
+      const { getActiveSession } = await import("./api");
+      const result = await getActiveSession();
+
+      expect(mockDb.select).toHaveBeenCalledWith(
+        expect.stringContaining("WHERE end_at IS NULL")
+      );
+
+      expect(result).toEqual(mockActiveSession);
+    });
+
+    it("should return null if no active session exists", async () => {
+      mockDb.select.mockResolvedValue([]);
+
+      const { getActiveSession } = await import("./api");
+      const result = await getActiveSession();
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("stopActiveSession", () => {
+    it("should update the active session with end_at timestamp", async () => {
+      const endAt = "2025-11-16T12:00:00Z";
+
+      const { stopActiveSession } = await import("./api");
+      await stopActiveSession(endAt);
+
+      expect(mockDb.execute).toHaveBeenCalledWith(
+        expect.stringContaining("UPDATE sessions SET end_at = ?"),
+        expect.arrayContaining([endAt, expect.any(String)])
+      );
     });
   });
 });
