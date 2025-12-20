@@ -11,12 +11,22 @@ vi.mock("./lib/api", () => ({
   timerStop: vi.fn(),
   upsertSession: vi.fn(),
   onTimerTick: vi.fn(),
+  getActiveSession: vi.fn(),
+  stopActiveSession: vi.fn(),
 }));
 
 // Mock SessionTimer component to simplify testing
 vi.mock("./components/SessionTimer", () => ({
-  SessionTimer: ({ bookId }: { bookId: string }) => (
-    <div data-testid={`timer-${bookId}`}>Timer for {bookId}</div>
+  SessionTimer: ({
+    bookId,
+    activeBookId,
+  }: {
+    bookId: string;
+    activeBookId: string | null;
+  }) => (
+    <div data-testid={`timer-${bookId}`}>
+      Timer for {bookId} {activeBookId === bookId ? "(active)" : ""}
+    </div>
   ),
 }));
 
@@ -27,6 +37,7 @@ describe("App Component", () => {
     vi.clearAllMocks();
     (api.listBooks as any).mockResolvedValue([]);
     (api.onTimerTick as any).mockResolvedValue(mockUnlisten);
+    (api.getActiveSession as any).mockResolvedValue(null); // No active session by default
   });
 
   describe("Initial Render", () => {
@@ -52,14 +63,14 @@ describe("App Component", () => {
         {
           id: "book-1",
           title: "Test Book 1",
-          authors: JSON.stringify(["Author A"]),
+          authors: "Author A", // Comma-separated string
           priority: 5,
           status: "active",
         },
         {
           id: "book-2",
           title: "Test Book 2",
-          authors: JSON.stringify(["Author B"]),
+          authors: "Author B", // Comma-separated string
           priority: 3,
           status: "completed",
         },
@@ -224,7 +235,7 @@ describe("App Component", () => {
         {
           id: "book-1",
           title: "Existing Book",
-          authors: JSON.stringify(["Author"]),
+          authors: "Author",
           priority: 0,
           status: "active",
         },
@@ -234,7 +245,7 @@ describe("App Component", () => {
         {
           id: mockBookId,
           title: "New Book",
-          authors: JSON.stringify(["New Author"]),
+          authors: "New Author",
           priority: 0,
           status: "active",
         },
@@ -331,14 +342,14 @@ describe("App Component", () => {
         {
           id: "book-1",
           title: "Book One",
-          authors: JSON.stringify(["Author A"]),
+          authors: "Author A",
           priority: 5,
           status: "active",
         },
         {
           id: "book-2",
           title: "Book Two",
-          authors: JSON.stringify(["Author B"]),
+          authors: "Author B",
           priority: 3,
           status: "active",
         },
@@ -359,7 +370,7 @@ describe("App Component", () => {
         {
           id: "book-status",
           title: "Status Test Book",
-          authors: JSON.stringify(["Author"]),
+          authors: "Author",
           priority: 0,
           status: "completed",
         },
@@ -379,21 +390,21 @@ describe("App Component", () => {
         {
           id: "book-1",
           title: "First Book",
-          authors: JSON.stringify(["Author"]),
+          authors: "Author",
           priority: 0,
           status: "active",
         },
         {
           id: "book-2",
           title: "Second Book",
-          authors: JSON.stringify(["Author"]),
+          authors: "Author",
           priority: 0,
           status: "active",
         },
         {
           id: "book-3",
           title: "Third Book",
-          authors: JSON.stringify(["Author"]),
+          authors: "Author",
           priority: 0,
           status: "active",
         },
@@ -407,6 +418,43 @@ describe("App Component", () => {
         expect(screen.getByText("First Book")).toBeInTheDocument();
         expect(screen.getByText("Second Book")).toBeInTheDocument();
         expect(screen.getByText("Third Book")).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("Session Restoration", () => {
+    it("should restore active session on mount", async () => {
+      const activeSession = {
+        id: "session-123",
+        book_id: "book-1",
+        start_at: "2025-11-16T10:00:00Z",
+        end_at: null,
+        created_at: "2025-11-16T10:00:00Z",
+        updated_at: "2025-11-16T10:00:00Z",
+      };
+
+      const mockBooks = [
+        {
+          id: "book-1",
+          title: "Active Book",
+          authors: "Author",
+          priority: 0,
+          status: "active",
+        },
+      ];
+
+      (api.getActiveSession as any).mockResolvedValue(activeSession);
+      (api.listBooks as any).mockResolvedValue(mockBooks);
+      (api.timerStart as any).mockResolvedValue("session-123");
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(api.getActiveSession).toHaveBeenCalled();
+        expect(api.timerStart).toHaveBeenCalledWith(
+          "book-1",
+          "2025-11-16T10:00:00Z"
+        );
       });
     });
   });

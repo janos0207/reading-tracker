@@ -79,6 +79,7 @@ fn get_database_name() -> String {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Initialize database with migrations
             let app_handle = app.handle().clone();

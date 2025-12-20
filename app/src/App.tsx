@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { createBook, listBooks, Book } from "./lib/api";
+import {
+  createBook,
+  listBooks,
+  Book,
+  getActiveSession,
+  timerStart,
+} from "./lib/api";
 import { SessionTimer } from "./components/SessionTimer";
 import "./App.css";
 
@@ -9,10 +15,12 @@ function App() {
   const [newBookAuthors, setNewBookAuthors] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activeBookId, setActiveBookId] = useState<string | null>(null);
 
-  // Load books on mount
+  // Load books and restore active session on mount
   useEffect(() => {
     loadBooks();
+    restoreActiveSession();
   }, []);
 
   const loadBooks = async () => {
@@ -23,6 +31,33 @@ function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       console.error("Failed to load books:", err);
+    }
+  };
+
+  const restoreActiveSession = async () => {
+    try {
+      const activeSession = await getActiveSession();
+      if (activeSession) {
+        // Found an active session, restore it
+        setActiveBookId(activeSession.book_id);
+
+        // Reconstruct the timer in Rust state
+        // The timer needs to know when the session started to calculate elapsed time
+        await timerStart(activeSession.book_id, activeSession.start_at);
+      }
+    } catch (err) {
+      console.error("Failed to restore active session:", err);
+      // Non-critical error, don't show to user
+    }
+  };
+
+  const handleSessionChange = async () => {
+    // Refresh active session when timer starts or stops
+    try {
+      const activeSession = await getActiveSession();
+      setActiveBookId(activeSession ? activeSession.book_id : null);
+    } catch (err) {
+      console.error("Failed to refresh active session:", err);
     }
   };
 
@@ -115,7 +150,11 @@ function App() {
                     <h3>{book.title}</h3>
                     <span className="book-status">{book.status}</span>
                   </div>
-                  <SessionTimer bookId={book.id} />
+                  <SessionTimer
+                    bookId={book.id}
+                    activeBookId={activeBookId}
+                    onSessionChange={handleSessionChange}
+                  />
                 </div>
               ))}
             </div>
