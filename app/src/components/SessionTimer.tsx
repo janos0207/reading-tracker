@@ -70,8 +70,9 @@ export function SessionTimer({
         // Ask user to confirm switching
         const bookIdMatch = activeSession.book_id === bookId;
         if (bookIdMatch) {
-          // Same book, just start (edge case - shouldn't happen in normal flow)
+          // Same book is already active; do not start a new session
           console.warn("Starting session for already active book");
+          return;
         } else {
           const confirmed = await askConfirm(
             "There is an ongoing reading session. Stop it and start reading this book instead?"
@@ -82,10 +83,17 @@ export function SessionTimer({
             return;
           }
 
-          // Stop the existing session
+          // Stop the existing session in both backends atomically
           const now = new Date().toISOString();
-          await stopActiveSession(now);
-          await timerStop(now);
+          try {
+            await Promise.all([stopActiveSession(now), timerStop(now)]);
+          } catch (e) {
+            console.error("Failed to stop existing session in all backends", e);
+            setError(
+              "Failed to fully stop the existing reading session. Please try again."
+            );
+            throw e;
+          }
         }
       }
 
